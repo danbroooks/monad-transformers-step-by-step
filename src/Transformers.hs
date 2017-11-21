@@ -1,11 +1,11 @@
 module Transformers where
 
-import           Control.Monad.Error
+import           Control.Monad.Except
 import           Control.Monad.Identity
 import           Control.Monad.Reader
 import           Control.Monad.State
 import           Control.Monad.Writer
-import qualified Data.Map               as Map
+import qualified Data.Map                   as Map
 import           Data.Maybe
 
 type Name = String
@@ -30,24 +30,27 @@ data Value
 
 type Env = Map.Map Name Value
 
-type Eval a = Identity a
+type Eval a = ExceptT String Identity a
 
-runEval :: Eval a -> a
-runEval = runIdentity
+runEval :: Eval a -> Either String a
+runEval = runIdentity . runExceptT
 
-eval :: Monad m => Env -> Exp -> m Value
+eval :: Monad m => Env -> Exp -> ExceptT String m Value
 eval env (Lit i) = return $ IntVal i
 eval env (Var n) =
     case Map.lookup n env of
         Just n' -> return n'
-        Nothing -> fail ("undefined variable: " ++ n)
+        Nothing -> throwError ("undefined variable: " ++ n)
 eval env (Plus a b) = do
-    IntVal a' <- eval env a
-    IntVal b' <- eval env b
-    return $ IntVal (a' + b')
+    ia <- eval env a
+    ib <- eval env b
+    case (ia, ib) of
+        (IntVal a', IntVal b') -> return $ IntVal (a' + b')
+        _                      -> throwError "type error in addition"
 eval env (Abs n e) = return $ FunVal env n e
 eval env (App a b) = do
     a' <- eval env a
     b' <- eval env b
     case a' of
         FunVal env' n body -> eval (Map.insert n b' env') body
+        _                  -> throwError "type error in application"
