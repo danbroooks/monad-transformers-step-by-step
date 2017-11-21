@@ -32,11 +32,11 @@ data Value
 type Env = Map.Map Name Value
 
 type Eval a = ReaderT Env (ExceptT String
-                          (WriterT [String] (StateT Integer Identity))) a
+                          (WriterT [String] (StateT Integer IO))) a
 
-runEval :: Env -> Integer -> Eval a -> ((Either String a, [String]), Integer)
+runEval :: Env -> Integer -> Eval a -> IO ((Either String a, [String]), Integer)
 runEval env st ev =
-    runIdentity $ runStateT (runWriterT $ runExceptT $ runReaderT ev env) st
+    runStateT (runWriterT $ runExceptT $ runReaderT ev env) st
 
 tick :: (Num s, MonadState s m) => m ()
 tick = do st <- get
@@ -45,6 +45,7 @@ tick = do st <- get
 eval :: Exp -> Eval Value
 eval (Lit i) = do
     tick
+    liftIO $ print i
     return $ IntVal i
 eval (Var n) = do
     tick
