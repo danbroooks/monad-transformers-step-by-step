@@ -31,28 +31,38 @@ data Value
 
 type Env = Map.Map Name Value
 
-type Eval a = ReaderT Env (ExceptT String Identity) a
+type Eval a = ReaderT Env (ExceptT String (StateT Integer Identity)) a
 
-runEval :: Env -> Eval a -> Either String a
-runEval env ev = runIdentity $ runExceptT (runReaderT ev env)
+runEval :: Env -> Integer -> Eval a -> (Either String a, Integer)
+runEval env st ev = runIdentity $ runStateT (runExceptT $ runReaderT ev env) st
+
+tick :: (Num s, MonadState s m) => m ()
+tick = do st <- get
+          put (st + 1)
 
 eval :: Exp -> Eval Value
-eval (Lit i) = return $ IntVal i
-eval (Var n) = do 
+eval (Lit i) = do
+    tick
+    return $ IntVal i
+eval (Var n) = do
+    tick
     env <- ask
     case Map.lookup n env of
         Just n' -> return n'
         Nothing -> throwError ("undefined variable: " ++ n)
 eval (Plus a b) = do
+    tick
     ia <- eval a
     ib <- eval b
     case (ia, ib) of
         (IntVal a', IntVal b') -> return $ IntVal (a' + b')
         _                      -> throwError "type error in addition"
 eval (Abs n e) = do
-  env <- ask
-  return $ FunVal env n e
+    tick
+    env <- ask
+    return $ FunVal env n e
 eval (App a b) = do
+    tick
     a' <- eval a
     b' <- eval b
     case a' of
