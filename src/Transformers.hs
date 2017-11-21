@@ -31,10 +31,12 @@ data Value
 
 type Env = Map.Map Name Value
 
-type Eval a = ReaderT Env (ExceptT String (StateT Integer Identity)) a
+type Eval a = ReaderT Env (ExceptT String
+                          (WriterT [String] (StateT Integer Identity))) a
 
-runEval :: Env -> Integer -> Eval a -> (Either String a, Integer)
-runEval env st ev = runIdentity $ runStateT (runExceptT $ runReaderT ev env) st
+runEval :: Env -> Integer -> Eval a -> ((Either String a, [String]), Integer)
+runEval env st ev =
+    runIdentity $ runStateT (runWriterT $ runExceptT $ runReaderT ev env) st
 
 tick :: (Num s, MonadState s m) => m ()
 tick = do st <- get
@@ -46,6 +48,7 @@ eval (Lit i) = do
     return $ IntVal i
 eval (Var n) = do
     tick
+    tell [n]
     env <- ask
     case Map.lookup n env of
         Just n' -> return n'
