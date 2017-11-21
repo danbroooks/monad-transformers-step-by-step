@@ -5,6 +5,7 @@ import           Control.Monad.Identity
 import           Control.Monad.Reader
 import           Control.Monad.State
 import           Control.Monad.Writer
+import           Data.Function
 import qualified Data.Map                   as Map
 import           Data.Maybe
 
@@ -30,27 +31,30 @@ data Value
 
 type Env = Map.Map Name Value
 
-type Eval a = ExceptT String Identity a
+type Eval a = ReaderT Env (ExceptT String Identity) a
 
-runEval :: Eval a -> Either String a
-runEval = runIdentity . runExceptT
+runEval :: Env -> Eval a -> Either String a
+runEval env ev = runIdentity $ runExceptT (runReaderT ev env)
 
-eval :: Monad m => Env -> Exp -> ExceptT String m Value
-eval env (Lit i) = return $ IntVal i
-eval env (Var n) =
+eval :: Exp -> Eval Value
+eval (Lit i) = return $ IntVal i
+eval (Var n) = do 
+    env <- ask
     case Map.lookup n env of
         Just n' -> return n'
         Nothing -> throwError ("undefined variable: " ++ n)
-eval env (Plus a b) = do
-    ia <- eval env a
-    ib <- eval env b
+eval (Plus a b) = do
+    ia <- eval a
+    ib <- eval b
     case (ia, ib) of
         (IntVal a', IntVal b') -> return $ IntVal (a' + b')
         _                      -> throwError "type error in addition"
-eval env (Abs n e) = return $ FunVal env n e
-eval env (App a b) = do
-    a' <- eval env a
-    b' <- eval env b
+eval (Abs n e) = do
+  env <- ask
+  return $ FunVal env n e
+eval (App a b) = do
+    a' <- eval a
+    b' <- eval b
     case a' of
-        FunVal env' n body -> eval (Map.insert n b' env') body
-        _                  -> throwError "type error in application"
+      FunVal env' n body -> local (const $ Map.insert n b' env') (eval body)
+      _                  -> throwError "type error in application"
